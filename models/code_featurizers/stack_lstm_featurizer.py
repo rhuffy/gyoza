@@ -60,7 +60,7 @@ class EncoderLSTMStack(nn.Module, DocumentFeaturizer):
         return torch.sigmoid(self.linear2(embed))
 
 
-class LSTMStackCell(nn.Module, DocumentFeaturizer):
+class LSTMStackCell(nn.Module):
     def __init__(self, embedding_dim, hidden_size):
         super().__init__()
         self.rnn = nn.LSTMCell(embedding_dim + hidden_size, hidden_size)

@@ -3,8 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from document_featurizer import DocumentFeaturizer
-from lstmn import BiLSTMN
+from .document_featurizer import DocumentFeaturizer
+from .lstmn import BiLSTMN
 
 
 class LSTMNDocumentFeaturizer(nn.Module, DocumentFeaturizer):

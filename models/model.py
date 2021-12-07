@@ -29,10 +29,12 @@ def collate(zipped_list: List[Tuple[Any, Any]]):
 class GyozaModel:
     def __init__(self, model) -> None:
         super().__init__()
-        self._model = model
+        self._embedding_model = model
 
     def fit(self, computation_data: List[FunctionOnInstance], performance_results: List[float]):
         # Below code is taken (w/ slight modification) from BAOForPostgreSQL Paper
+
+        performance_results = torch.tensor(performance_results)
 
         optimizer = optim.Adam(self._embedding_model.parameters())
         loss_fn = nn.MSELoss()

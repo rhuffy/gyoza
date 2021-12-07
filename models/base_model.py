@@ -12,7 +12,7 @@ class BaseModel(nn.Module):
         self._embedding_model = embedding_model
 
     def forward(self, computation_data: FunctionOnInstance):
-        func = self._function_featurizer(computation_data.function_data),
+        func = self._function_featurizer(computation_data.function_data)
         inst = self._instance_featurizer(computation_data.instance_type_data)
 
         embed = torch.cat([func, inst])

@@ -1,6 +1,7 @@
 from typing import Any, NamedTuple, List, Tuple
 from abc import ABC, abstractmethod
 import numpy as np
+import torch
 from torch import cuda, tensor
 import torch.nn as nn
 import torch.optim as optim
@@ -26,28 +27,12 @@ def collate(zipped_list: List[Tuple[Any, Any]]):
 
 
 class GyozaModel:
-    def __init__(
-        self, function_featurizer, instance_featurizer, embedding_model, performance_metric
-    ) -> None:
+    def __init__(self, model) -> None:
         super().__init__()
-        self._function_featurizer = function_featurizer
-        self._instance_featurizer = instance_featurizer
-        self._embedding_model = embedding_model
-        self._performance_metric = performance_metric
+        self._model = model
 
     def fit(self, computation_data: List[FunctionOnInstance], performance_results: List[float]):
-        function_on_instance_embeddings = [
-            np.concatenate(
-                self._function_featurizer(d.function_data),
-                self._instance_featurizer(d.instance_type_data),
-            )
-            for d in computation_data
-        ]
-
         # Below code is taken (w/ slight modification) from BAOForPostgreSQL Paper
-
-        data_pairs = list(zip(function_on_instance_embeddings, performance_results))
-        dataset = DataLoader(data_pairs, batch_size=16, shuffle=True, collate_fn=collate)
 
         optimizer = optim.Adam(self._embedding_model.parameters())
         loss_fn = nn.MSELoss()
@@ -55,7 +40,7 @@ class GyozaModel:
         losses = []
         for epoch in range(100):
             loss_accum = 0
-            for x, y in dataset:
+            for x, y in zip(computation_data, performance_results):
                 if CUDA:
                     y = y.cuda()
                 y_pred = self._embedding_model(x)
@@ -66,7 +51,7 @@ class GyozaModel:
                 loss.backward()
                 optimizer.step()
 
-            loss_accum /= len(dataset)
+            loss_accum /= len(computation_data)
             losses.append(loss_accum)
             if epoch % 15 == 0:
                 print("Epoch", epoch, "training loss:", loss_accum)
@@ -79,14 +64,7 @@ class GyozaModel:
                     break
         print("Stopped training after max epochs")
 
-    def predict(self, computation_data: List[FunctionOnInstance]) -> float:
-        function_on_instance_embeddings = [
-            np.concatenate(
-                self._function_featurizer(d.function_data),
-                self._instance_featurizer(d.instance_type_data),
-            )
-            for d in computation_data
-        ]
-
-        self._embedding_model.eval()
-        return self._embedding_model(function_on_instance_embeddings).cpu().detach().numpy()
+    def predict(self, computation_data: FunctionOnInstance) -> float:
+        with torch.no_grad():
+            self._embedding_model.eval()
+            return self._embedding_model(computation_data).cpu().detach().numpy()

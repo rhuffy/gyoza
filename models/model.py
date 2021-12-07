@@ -31,7 +31,9 @@ class GyozaModel:
         super().__init__()
         self._embedding_model = model
 
-    def fit(self, computation_data: List[FunctionOnInstance], performance_results: List[float]):
+    def fit(
+        self, computation_data: List[FunctionOnInstance], performance_results: List[List[float]]
+    ):
         # Below code is taken (w/ slight modification) from BAOForPostgreSQL Paper
 
         performance_results = torch.tensor(performance_results)

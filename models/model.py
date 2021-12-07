@@ -1,11 +1,12 @@
 from typing import Any, NamedTuple, List, Tuple
-from abc import ABC, abstractmethod
 import numpy as np
 import torch
 from torch import cuda, tensor
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+
+from .embedding_model import GyozaEmbedding
+from .common import FunctionOnInstance
 
 # Goal here is (image, node) => predicted perf. score
 
@@ -16,20 +17,10 @@ from torch.utils.data import DataLoader
 CUDA = cuda.is_available()
 
 
-class FunctionOnInstance(NamedTuple):
-    function_data: str
-    instance_type_data: str
-
-
-def collate(zipped_list: List[Tuple[Any, Any]]):
-    [first, second] = list(zip(*zipped_list))
-    return first, tensor(second)
-
-
 class GyozaModel:
-    def __init__(self, model) -> None:
+    def __init__(self, embedding_model: GyozaEmbedding) -> None:
         super().__init__()
-        self._embedding_model = model
+        self._embedding_model = embedding_model
 
     def fit(
         self, computation_data: List[FunctionOnInstance], performance_results: List[List[float]]

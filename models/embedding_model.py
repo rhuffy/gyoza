@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-from .types import FunctionOnInstance
+from .common import FunctionOnInstance
 
 
-class BaseModel(nn.Module):
+class GyozaEmbedding(nn.Module):
     def __init__(self, function_featurizer, instance_featurizer, embedding_model):
         super().__init__()
 

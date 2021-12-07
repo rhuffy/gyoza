@@ -1,6 +1,6 @@
 import pytest
 
-from .instance_featurizer import DefaultInstanceFeaturizer
+from .featurizer import DefaultInstanceFeaturizer
 
 
 MOCK_YAML = """

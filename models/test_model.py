@@ -2,8 +2,9 @@ import pytest
 import numpy as np
 import torch.nn as nn
 import torch
-from .model import GyozaModel, FunctionOnInstance
-from .base_model import BaseModel
+from .common import FunctionOnInstance
+from .model import GyozaModel
+from .embedding_model import GyozaEmbedding
 
 
 def test_model():
@@ -11,7 +12,7 @@ def test_model():
     mock_instance_featurizer = lambda _: torch.tensor([3.0])
     embedding_model = nn.Linear(3, 2)
 
-    base_model = BaseModel(mock_function_featurizer, mock_instance_featurizer, embedding_model)
+    base_model = GyozaEmbedding(mock_function_featurizer, mock_instance_featurizer, embedding_model)
     gyoza_model = GyozaModel(base_model)
 
     X_data = [

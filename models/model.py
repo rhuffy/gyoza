@@ -25,7 +25,7 @@ def collate(zipped_list: List[Tuple[Any, Any]]):
     return first, tensor(second)
 
 
-class GyozaModel(ABC):
+class GyozaModel:
     def __init__(
         self, function_featurizer, instance_featurizer, embedding_model, performance_metric
     ) -> None:
@@ -35,10 +35,8 @@ class GyozaModel(ABC):
         self._embedding_model = embedding_model
         self._performance_metric = performance_metric
 
-    def fit(
-        self, computation_data: List[FunctionOnInstance], performance_statistics: List[List[float]]
-    ):
-        function_on_instance_embedding = [
+    def fit(self, computation_data: List[FunctionOnInstance], performance_results: List[float]):
+        function_on_instance_embeddings = [
             np.concatenate(
                 self._function_featurizer(d.function_data),
                 self._instance_featurizer(d.instance_type_data),
@@ -46,15 +44,14 @@ class GyozaModel(ABC):
             for d in computation_data
         ]
 
-        performance_results = [self._performance_metric(stat) for stat in performance_statistics]
+        # Below code is taken (w/ slight modification) from BAOForPostgreSQL Paper
 
-        data_pairs = list(zip(function_on_instance_embedding, performance_results))
+        data_pairs = list(zip(function_on_instance_embeddings, performance_results))
         dataset = DataLoader(data_pairs, batch_size=16, shuffle=True, collate_fn=collate)
 
         optimizer = optim.Adam(self._embedding_model.parameters())
         loss_fn = nn.MSELoss()
 
-        # Taken from BAOForPostgreSQL Paper
         losses = []
         for epoch in range(100):
             loss_accum = 0
@@ -82,6 +79,14 @@ class GyozaModel(ABC):
                     break
         print("Stopped training after max epochs")
 
-    def predict(self, computation_data: FunctionOnInstance) -> float:
-        # TODO: import, calculate.
-        return 0.0
+    def predict(self, computation_data: List[FunctionOnInstance]) -> float:
+        function_on_instance_embeddings = [
+            np.concatenate(
+                self._function_featurizer(d.function_data),
+                self._instance_featurizer(d.instance_type_data),
+            )
+            for d in computation_data
+        ]
+
+        self._embedding_model.eval()
+        return self._embedding_model(function_on_instance_embeddings).cpu().detach().numpy()

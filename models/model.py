@@ -38,12 +38,13 @@ class GyozaModel:
         run = None
         if logging:
             run = wandb.init(project="6.887 Final Project", entity="milanb17")
-            wandb.config({
+            wandb.config = {
                 "learning_rate": learning_rate,
                 "epochs": epochs,
                 "samples_taken": samples_taken,
-                "args": args
-            })
+                "args": args,
+            }
+
             wandb.watch(self._embedding_model)
 
         optimizer = optim.Adam(self._embedding_model.parameters())
@@ -58,6 +59,8 @@ class GyozaModel:
                 if CUDA:
                     y = y.cuda()
                 y_pred = self._embedding_model(x)
+                # print(y)
+                # print(y_pred)
                 loss = loss_fn(y_pred, y)
                 loss_accum += loss.item()
 
@@ -66,7 +69,7 @@ class GyozaModel:
                 optimizer.step()
 
                 if logging:
-                    wandb.log({"loss:", loss})
+                    wandb.log({"loss": loss})
 
             loss_accum /= len(experience)
             losses.append(loss_accum)

@@ -56,48 +56,80 @@ class RunStatistics(NamedTuple):
         )
 
 
-class CollectedRunStatistics(NamedTuple):
-    time_elapsed: float
-    max_cpu_utilization: float
-    average_cpu_utilization: float
-    max_memory_utilization: float
-    average_memory_utilization: float
-    max_network_rx: float
-    average_network_rx: float
-    max_network_tx: float
-    average_network_tx: float
+# class CollectedRunStatistics(NamedTuple):
+#     time_elapsed: float
+#     max_cpu_utilization: float
+#     average_cpu_utilization: float
+#     max_memory_utilization: float
+#     average_memory_utilization: float
+#     max_network_rx: float
+#     average_network_rx: float
+#     max_network_tx: float
+#     average_network_tx: float
 
-    @staticmethod
-    def from_run_stats(timestamp: float, stats: List[RunStatistics]):
-        max_cpu, sum_cpu = 0.0, 0.0
-        max_mem, sum_mem = 0.0, 0.0
-        max_rx, sum_rx = 0.0, 0.0
-        max_tx, sum_tx = 0.0, 0.0
+#     @staticmethod
+#     def from_run_stats(timestamp: float, stats: List[RunStatistics]):
+#         max_cpu, sum_cpu = 0.0, 0.0
+#         max_mem, sum_mem = 0.0, 0.0
+#         max_rx, sum_rx = 0.0, 0.0
+#         max_tx, sum_tx = 0.0, 0.0
 
-        for stat in stats:
-            sum_cpu += stat.cpu_utilization
-            max_cpu = max(max_cpu, stat.cpu_utilization)
+#         for stat in stats:
+#             sum_cpu += stat.cpu_utilization
+#             max_cpu = max(max_cpu, stat.cpu_utilization)
 
-            sum_mem += stat.memory_utilization
-            max_mem = max(max_mem, stat.memory_utilization)
+#             sum_mem += stat.memory_utilization
+#             max_mem = max(max_mem, stat.memory_utilization)
 
-            sum_rx += stat.network_rx
-            max_rx = max(max_rx, stat.network_rx)
+#             sum_rx += stat.network_rx
+#             max_rx = max(max_rx, stat.network_rx)
 
-            sum_tx += stat.network_tx
-            max_tx = max(max_tx, stat.network_tx)
+#             sum_tx += stat.network_tx
+#             max_tx = max(max_tx, stat.network_tx)
 
-            return CollectedRunStatistics(
-                time_elapsed=timestamp,
-                max_cpu_utilization=max_cpu,
-                average_cpu_utilization=sum_cpu / len(stats),
-                max_memory_utilization=max_mem,
-                average_memory_utilization=sum_mem / len(stats),
-                max_network_rx=max_rx,
-                average_network_rx=sum_rx / len(stats),
-                max_network_tx=max_tx,
-                average_network_tx=sum_tx / len(stats),
-            )
+#             return [
+#                 timestamp,
+#                 max_cpu,
+#                 sum_cpu / len(stats),
+#                 max_mem,
+#                 sum_mem / len(stats),
+#                 max_rx,
+#                 sum_rx / len(stats),
+#                 max_tx,
+#                 sum_tx / len(stats),
+#             ]
+
+
+def from_run_stats(timestamp: float, stats: List[RunStatistics]) -> List[float]:
+    max_cpu, sum_cpu = 0.0, 0.0
+    max_mem, sum_mem = 0.0, 0.0
+    max_rx, sum_rx = 0.0, 0.0
+    max_tx, sum_tx = 0.0, 0.0
+
+    for stat in stats:
+        sum_cpu += stat.cpu_utilization
+        max_cpu = max(max_cpu, stat.cpu_utilization)
+
+        sum_mem += stat.memory_utilization
+        max_mem = max(max_mem, stat.memory_utilization)
+
+        sum_rx += stat.network_rx
+        max_rx = max(max_rx, stat.network_rx)
+
+        sum_tx += stat.network_tx
+        max_tx = max(max_tx, stat.network_tx)
+
+        return [
+            timestamp,
+            max_cpu,
+            sum_cpu / len(stats),
+            max_mem,
+            sum_mem / len(stats),
+            max_rx,
+            sum_rx / len(stats),
+            max_tx,
+            sum_tx / len(stats),
+        ]
 
 
 def launch_run(event, container_id, function_key, value):
@@ -120,6 +152,17 @@ class WorkerInstance:
         self._client = docker.from_env()
 
     def launch(self, function_key: str, action_key: str) -> List[float]:
+        return [
+            1.0,
+            2.0,
+            0.5,
+            2.0,
+            0.1,
+            0.0,
+            0.5,
+            4.0,
+            0.4,
+        ]
         if function_key not in self._benchmarks:
             raise Exception(f"Invalid benchmark {function_key}")
 
@@ -146,7 +189,7 @@ class WorkerInstance:
             res.append(next(stats_generator))
 
         res = [RunStatistics.from_json(collected_stat_json) for collected_stat_json in res]
-        final_stats = CollectedRunStatistics.from_run_stats(value.value, res)
+        final_stats = from_run_stats(value.value, res)
         container.stop()
         return final_stats
 

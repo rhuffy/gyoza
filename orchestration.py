@@ -6,8 +6,6 @@ import random
 import sys
 from typing import List
 
-from _typeshed import NoneType
-
 from models.code_featurizers import (
     LSTMDocumentFeaturizer,
     LSTMNDocumentFeaturizer,
@@ -25,9 +23,9 @@ LSTM = "lstm"
 LSTMN = "lstmn"
 NEURAL_STACK = "neural_stack"
 
-INSTANCE_FEATURES = 10
+INSTANCE_FEATURES = 4
 PROGRAM_ANALYZER_FEATURES = 10
-RUNTIME_STATISTICS = 8
+RUNTIME_STATISTICS = 9
 
 ERROR_INVALID_NAME = 123
 
@@ -36,8 +34,7 @@ def dir_path(path):
     if os.path.isdir(path):
         return path
     else:
-        raise argparse.ArgumentTypeError(
-            f"readable_dir:{path} is not a valid path")
+        raise argparse.ArgumentTypeError(f"readable_dir:{path} is not a valid path")
 
 
 def is_path_creatable(pathname: str) -> bool:
@@ -52,8 +49,7 @@ def is_pathname_valid(pathname: str) -> bool:
 
         _, pathname = os.path.splitdrive(pathname)
 
-        root_dirname = os.environ.get(
-            'HOMEDRIVE', 'C:') if sys.platform == 'win32' else os.path.sep
+        root_dirname = os.environ.get('HOMEDRIVE', 'C:') if sys.platform == 'win32' else os.path.sep
         assert os.path.isdir(root_dirname)  # ...Murphy and her ironclad Law
 
         root_dirname = root_dirname.rstrip(os.path.sep) + os.path.sep
@@ -89,25 +85,26 @@ parser.add_argument("--code-model", choices=[LSTM, LSTMN, NEURAL_STACK])
 parser.add_argument("--instance-model", choices=["default"], default="default")
 parser.add_argument("--test-functions", type=dir_path)
 parser.add_argument("--experience-length", type=int)
-parser.add_argument("--num-embeddings", type=int, default=10)
+parser.add_argument("--num-embeddings", type=int, default=100)
 parser.add_argument("--embedding-dim", type=int, default=128)
 parser.add_argument("--hidden-dim", type=int, default=512)
 parser.add_argument("--out-dim", type=int, default=32)
-parser.add_argument("--model-path", type=is_path_exists_or_creatable)
-parser.add_argument("--stat-cache", type=is_path_exists_or_creatable)
+parser.add_argument("--model-path", type=str)
+parser.add_argument("--stat-cache", type=str)
 parser.add_argument("--logging", type=bool, default=False)
+parser.add_argument("--verbose", type=bool, default=True)
+parser.add_argument("--epochs", type=int, default=100)
 
 args = parser.parse_args()
 
-code_model_args = [args.num_embeddings,
-                   args.embedding_dim, args.hidden_dim, args.out_dim]
+code_model_args = [args.num_embeddings, args.embedding_dim, args.hidden_dim, args.out_dim]
 embedding_model_args = [
     args.out_dim + INSTANCE_FEATURES + PROGRAM_ANALYZER_FEATURES,
     RUNTIME_STATISTICS,
 ]
 
 
-def create_model(code_model_args, embedding_model_args, program_analyzer) -> GyozaModel:
+def create_model(code_model_args, embedding_model_args, program_analyzer, lang) -> GyozaModel:
     if args.code_model == LSTM:
         code_model = LSTMDocumentFeaturizer(*code_model_args)
     elif args.code_model == LSTMN:
@@ -119,13 +116,18 @@ def create_model(code_model_args, embedding_model_args, program_analyzer) -> Gyo
     embedding_model = LinearEmbedding(*embedding_model_args)
 
     embedding_model = GyozaEmbedding(
-        code_model, instance_model, program_analyzer, embedding_model)
+        code_model, instance_model, program_analyzer, embedding_model, lang
+    )
     # (function, instance_info) -> compatability_stats
     return GyozaModel(embedding_model)
 
 
-def get_all_functions(_dir: str) -> List[NoneType]:
-    return []
+def get_all_functions(rel_path) -> List[str]:
+    function_pointers = []
+    for item in os.listdir(os.path.join(os.path.dirname(__file__), rel_path)):
+        if item.endswith(".c"):
+            function_pointers.append(item[:-2])
+    return function_pointers
 
 
 def random_iter(items):
@@ -134,33 +136,69 @@ def random_iter(items):
         yield random.choice(items)
 
 
-def main():
-    functions = get_all_functions(args.test_functions)
-    program_analyzer = ProgramAnalyzer(pickled_stat_cache=args.stat_cache)
-    if os.path.exists(args.stat_cache):
-        program_analyzer.load(args.stat_cache)
+def custom_logger(log_str, verbose):
+    if verbose:
+        print(log_str)
 
-    model = create_model(
-        code_model_args, embedding_model_args, program_analyzer)
+
+class Lang:
+    def __init__(self):
+        self.word2index = {}
+        self.word2count = {}
+        self.index2word = {0: "SOS", 1: "EOS"}
+        self.n_words = 2  # Count SOS and EOS
+
+    def add_sentence(self, sentence):
+        for word in sentence.split(' '):
+            self.add_word(word)
+
+    def add_word(self, word):
+        if word not in self.word2index:
+            self.word2index[word] = self.n_words
+            self.word2count[word] = 1
+            self.index2word[self.n_words] = word
+            self.n_words += 1
+        else:
+            self.word2count[word] += 1
+
+
+def main():
+    custom_logger("Loading functions", args.verbose)
+    functions = get_all_functions(args.test_functions)
+    custom_logger("Loaded functions, Loading Program Analyzer", args.verbose)
+    program_analyzer = ProgramAnalyzer()
+    # if os.path.exists(args.stat_cache):
+    #     program_analyzer.load(args.stat_cache)
+    custom_logger("Loaded Program Analyzer", args.verbose)
+
+    custom_logger("Creating Model...", args.verbose)
+    lang = Lang()
+    model = create_model(code_model_args, embedding_model_args, program_analyzer, lang)
+    custom_logger("Creating worker instance...", args.verbose)
     worker = WorkerInstance()
 
+    custom_logger("Loading instance configs", args.verbose)
     instances = []
-    for filename in os.listdir(os.path.dirname(__file__), "./instances"):
+    for filename in os.listdir(os.path.join(os.path.dirname(__file__), "./instances")):
         if filename.endswith(".yml"):
             instances.append(filename[:-4])
 
+    custom_logger("initialize experience buffer", args.verbose)
     experience_buffer = collections.deque(maxlen=args.experience_length)
 
     # user definable
     def affinity(parameters: List[float]) -> float:
-        return 0
+        return parameters[0]
 
     # not sure
     def stopping_condition(iters: int) -> bool:
-        return False
+        return iters == 50
 
     iter_count = 0
+    custom_logger("Starting training...", args.verbose)
     for function in random_iter(functions):
+        custom_logger(f"Training on function {function}", args.verbose)
+        custom_logger("Predicting actions...", args.verbose)
         best_instance_idx, _ = max(
             [
                 (i, model.predict(FunctionOnInstance(function, instance)))
@@ -169,17 +207,22 @@ def main():
             key=lambda x: affinity(x[1]),
         )
         best_instance = instances[best_instance_idx]
+        custom_logger(f"Chose action {best_instance} for context {function}", args.verbose)
+        custom_logger("Launching Run", args.verbose)
         res = worker.launch(function, best_instance)
+        custom_logger("Launched Run", args.verbose)
         experience_buffer.append(Experience(function, best_instance, res))
         iter_count += 1
+        custom_logger(f"Iter {iter_count}", args.verbose)
         if iter_count % args.experience_length == 0:
             # Thompson Sampling
-            model = create_model(
-                code_model_args, embedding_model_args, program_analyzer)
+            custom_logger("Retraining model according to Thompson sampling...", args.verbose)
+            model = create_model(code_model_args, embedding_model_args, program_analyzer, lang)
             model.fit(
-                random.choices(experience_buffer, args.experience_length),
+                random.choices(experience_buffer, k=args.experience_length),
                 iter_count,
                 args,
+                epochs=args.epochs,
                 logging=args.logging,
             )
         if stopping_condition(iter_count):

@@ -36,7 +36,8 @@ def dir_path(path):
     if os.path.isdir(path):
         return path
     else:
-        raise argparse.ArgumentTypeError(f"readable_dir:{path} is not a valid path")
+        raise argparse.ArgumentTypeError(
+            f"readable_dir:{path} is not a valid path")
 
 
 def is_path_creatable(pathname: str) -> bool:
@@ -51,7 +52,8 @@ def is_pathname_valid(pathname: str) -> bool:
 
         _, pathname = os.path.splitdrive(pathname)
 
-        root_dirname = os.environ.get('HOMEDRIVE', 'C:') if sys.platform == 'win32' else os.path.sep
+        root_dirname = os.environ.get(
+            'HOMEDRIVE', 'C:') if sys.platform == 'win32' else os.path.sep
         assert os.path.isdir(root_dirname)  # ...Murphy and her ironclad Law
 
         root_dirname = root_dirname.rstrip(os.path.sep) + os.path.sep
@@ -92,18 +94,20 @@ parser.add_argument("--embedding-dim", type=int, default=128)
 parser.add_argument("--hidden-dim", type=int, default=512)
 parser.add_argument("--out-dim", type=int, default=32)
 parser.add_argument("--model-path", type=is_path_exists_or_creatable)
+parser.add_argument("--stat-cache", type=is_path_exists_or_creatable)
 parser.add_argument("--logging", type=bool, default=False)
 
 args = parser.parse_args()
 
-code_model_args = [args.num_embeddings, args.embedding_dim, args.hidden_dim, args.out_dim]
+code_model_args = [args.num_embeddings,
+                   args.embedding_dim, args.hidden_dim, args.out_dim]
 embedding_model_args = [
     args.out_dim + INSTANCE_FEATURES + PROGRAM_ANALYZER_FEATURES,
     RUNTIME_STATISTICS,
 ]
 
 
-def create_model(code_model_args, embedding_model_args) -> GyozaModel:
+def create_model(code_model_args, embedding_model_args, program_analyzer) -> GyozaModel:
     if args.code_model == LSTM:
         code_model = LSTMDocumentFeaturizer(*code_model_args)
     elif args.code_model == LSTMN:
@@ -111,11 +115,11 @@ def create_model(code_model_args, embedding_model_args) -> GyozaModel:
     else:
         code_model = LSTMStackFeaturizer(*code_model_args)
 
-    program_analyzer = ProgramAnalyzer()
     instance_model = DefaultInstanceFeaturizer()
     embedding_model = LinearEmbedding(*embedding_model_args)
 
-    embedding_model = GyozaEmbedding(code_model, instance_model, program_analyzer, embedding_model)
+    embedding_model = GyozaEmbedding(
+        code_model, instance_model, program_analyzer, embedding_model)
     # (function, instance_info) -> compatability_stats
     return GyozaModel(embedding_model)
 
@@ -132,7 +136,12 @@ def random_iter(items):
 
 def main():
     functions = get_all_functions(args.test_functions)
-    model = create_model(code_model_args, embedding_model_args)
+    program_analyzer = ProgramAnalyzer(pickled_stat_cache=args.stat_cache)
+    if os.path.exists(args.stat_cache):
+        program_analyzer.load(args.stat_cache)
+
+    model = create_model(
+        code_model_args, embedding_model_args, program_analyzer)
     worker = WorkerInstance()
 
     instances = []
@@ -165,7 +174,8 @@ def main():
         iter_count += 1
         if iter_count % args.experience_length == 0:
             # Thompson Sampling
-            model = create_model(code_model_args, embedding_model_args)
+            model = create_model(
+                code_model_args, embedding_model_args, program_analyzer)
             model.fit(
                 random.choices(experience_buffer, args.experience_length),
                 iter_count,
@@ -174,6 +184,9 @@ def main():
             )
         if stopping_condition(iter_count):
             break
+
+    # Save stat cache to disk
+    program_analyzer.save(args.stat_cache)
 
 
 if __name__ == "__main__":

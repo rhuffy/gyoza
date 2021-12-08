@@ -12,9 +12,9 @@ from .gyoza_embedding import GyozaEmbedding
 
 # Goal here is (image, node) => predicted perf. score
 
-# Treat action: image_features => (image_features, node_features)
+# Treat action: image_features => (image_features, node_features, pref_features)
 
-# experiences: ((image_features, node_features), Performance((image_features, node_features)))
+# experiences: ((image_features, node_features, pref_features), Performance
 
 CUDA = cuda.is_available()
 
@@ -28,11 +28,10 @@ class GyozaModel:
         self,
         experience: List[Experience],
         samples_taken: int,
-        architecture: str,
-        save_path: str,
+        args,
         learning_rate=1e-3,
         epochs=100,
-        logging=False
+        logging=False,
     ):
         # Below code is taken (w/ slight modification) from BAOForPostgreSQL Paper
 
@@ -43,7 +42,7 @@ class GyozaModel:
                 "learning_rate": learning_rate,
                 "epochs": epochs,
                 "samples_taken": samples_taken,
-                "architecture": architecture
+                "args": args
             })
             wandb.watch(self._embedding_model)
 
@@ -81,10 +80,10 @@ class GyozaModel:
                     print("Stopped training from convergence condition at epoch", epoch)
                     break
         print("Stopped training after max epochs")
-        torch.save(self._embedding_model.state_dict(), save_path)
+        torch.save(self._embedding_model.state_dict(), args.model_path)
         if logging:
             artifact = wandb.Artifact('model', type='model')
-            artifact.add_file(save_path)
+            artifact.add_file(args.model_path)
             run.log_artifact(artifact)
             run.finish()
 

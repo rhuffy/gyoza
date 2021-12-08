@@ -1,12 +1,14 @@
-from typing import Any, NamedTuple, List, Tuple
+from typing import List
+
 import numpy as np
 import torch
-from torch import cuda, tensor
 import torch.nn as nn
 import torch.optim as optim
+import wandb
+from torch import cuda
 
-from .embedding_model import GyozaEmbedding
 from .common import Experience, FunctionOnInstance
+from .gyoza_embedding import GyozaEmbedding
 
 # Goal here is (image, node) => predicted perf. score
 
@@ -22,14 +24,34 @@ class GyozaModel:
         super().__init__()
         self._embedding_model = embedding_model
 
-    def fit(self, experience: List[Experience]):
+    def fit(
+        self,
+        experience: List[Experience],
+        samples_taken: int,
+        architecture: str,
+        save_path: str,
+        learning_rate=1e-3,
+        epochs=100,
+        logging=False
+    ):
         # Below code is taken (w/ slight modification) from BAOForPostgreSQL Paper
+
+        run = None
+        if logging:
+            run = wandb.init(project="6.887 Final Project", entity="milanb17")
+            wandb.config({
+                "learning_rate": learning_rate,
+                "epochs": epochs,
+                "samples_taken": samples_taken,
+                "architecture": architecture
+            })
+            wandb.watch(self._embedding_model)
 
         optimizer = optim.Adam(self._embedding_model.parameters())
         loss_fn = nn.MSELoss()
 
         losses = []
-        for epoch in range(100):
+        for epoch in range(epochs):
             loss_accum = 0
             for e in experience:
                 y = torch.tensor(e.stats)
@@ -44,6 +66,9 @@ class GyozaModel:
                 loss.backward()
                 optimizer.step()
 
+                if logging:
+                    wandb.log({"loss:", loss})
+
             loss_accum /= len(experience)
             losses.append(loss_accum)
             if epoch % 15 == 0:
@@ -56,6 +81,12 @@ class GyozaModel:
                     print("Stopped training from convergence condition at epoch", epoch)
                     break
         print("Stopped training after max epochs")
+        torch.save(self._embedding_model.state_dict(), save_path)
+        if logging:
+            artifact = wandb.Artifact('model', type='model')
+            artifact.add_file(save_path)
+            run.log_artifact(artifact)
+            run.finish()
 
     def predict(self, computation_data: FunctionOnInstance) -> float:
         with torch.no_grad():

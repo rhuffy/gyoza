@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch
 from .common import FunctionOnInstance
 from .model import GyozaModel
-from .embedding_model import GyozaEmbedding
+from .gyoza_embedding import GyozaEmbedding
 
 
 def test_model():

@@ -10,10 +10,10 @@ from models.code_featurizers import (LSTMDocumentFeaturizer,
                                      LSTMNDocumentFeaturizer,
                                      LSTMStackFeaturizer)
 from models.common import Experience, FunctionOnInstance
+from models.embedding_models import LinearEmbedding
 from models.gyoza_embedding import GyozaEmbedding
 from models.instance_featurizers import DefaultInstanceFeaturizer
 from models.model import GyozaModel
-from models.embedding_models import LinearEmbedding
 from worker import WorkerInstance
 
 LSTM = "lstm"
@@ -38,6 +38,8 @@ parser.add_argument("--num-embeddings", type=int, default=10)
 parser.add_argument("--embedding-dim", type=int, default=128)
 parser.add_argument("--hidden-dim", type=int, default=512)
 parser.add_argument("--out-dim", type=int, default=32)
+parser.add_argument("--model-path", type=str)
+parser.add_argument("--logging", type=bool, default=False)
 
 args = parser.parse_args()
 code_model_args = [args.num_embeddings,
@@ -96,9 +98,13 @@ def main():
         iter_count += 1
         if iter_count % args.experience_length == 0:
             # Thompson Sampling
-            model = create_model(code_model_args)
-            model.fit(random.choices(
-                experience_buffer, args.experience_length))
+            model = create_model(code_model_args, embedding_model_args)
+            model.fit(
+                random.choices(experience_buffer, args.experience_length),
+                iter_count,
+                f"{args.code_model}",
+                args.model_path,
+                logging=args.logging)
         if stopping_condition(iter_count):
             break
 

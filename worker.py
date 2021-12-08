@@ -2,21 +2,17 @@ from typing import List, NamedTuple
 import os
 import subprocess
 
-from multiprocessing import Process, Event
+from multiprocessing import Process, Event, Value
 
 import docker
 
 from pprint import pprint
+import time
+import yaml
 
 
 IMAGE_NAME = "myimage"
 TAG_NAME = "tag2"
-
-
-def launch_run(event, container_id, cmd):
-    client = docker.from_env()
-    client.containers.get(container_id).exec_run(cmd)
-    event.set()
 
 
 POLLING_CADENCE = 0.01
@@ -61,6 +57,7 @@ class RunStatistics(NamedTuple):
 
 
 class CollectedRunStatistics(NamedTuple):
+    time_elapsed: float
     max_cpu_utilization: float
     average_cpu_utilization: float
     max_memory_utilization: float
@@ -71,7 +68,7 @@ class CollectedRunStatistics(NamedTuple):
     average_network_tx: float
 
     @staticmethod
-    def from_run_stats(stats: List[RunStatistics]):
+    def from_run_stats(timestamp: float, stats: List[RunStatistics]):
         max_cpu, sum_cpu = 0.0, 0.0
         max_mem, sum_mem = 0.0, 0.0
         max_rx, sum_rx = 0.0, 0.0
@@ -91,6 +88,7 @@ class CollectedRunStatistics(NamedTuple):
             max_tx = max(max_tx, stat.network_tx)
 
             return CollectedRunStatistics(
+                time_elapsed=timestamp,
                 max_cpu_utilization=max_cpu,
                 average_cpu_utilization=sum_cpu / len(stats),
                 max_memory_utilization=max_mem,
@@ -100,6 +98,14 @@ class CollectedRunStatistics(NamedTuple):
                 max_network_tx=max_tx,
                 average_network_tx=sum_tx / len(stats),
             )
+
+
+def launch_run(event, container_id, function_key, value):
+    client = docker.from_env()
+    start = time.time()
+    client.containers.get(container_id).exec_run(f"./{function_key}")
+    value.value = time.time() - start
+    event.set()
 
 
 class WorkerInstance:
@@ -112,18 +118,27 @@ class WorkerInstance:
                 self._benchmarks.add(file_name[:-2])
 
         self._client = docker.from_env()
-        self._container = self._client.containers.run(
-            f"{IMAGE_NAME}:{TAG_NAME}", detach=True, tty=True
-        )
 
     def launch(self, function_key: str, action_key: str) -> List[float]:
         if function_key not in self._benchmarks:
             raise Exception(f"Invalid benchmark {function_key}")
 
-        event = Event()
-        stats_generator = self._container.stats(decode=True, stream=True)
+        event, value = Event(), Value("f", 0.0)
+        with open(
+            os.path.join(os.path.dirname(__file__), f"./instances/{action_key}.yml"), "r"
+        ) as f:
+            instance_config = yaml.safe_load(f)
+            container = self._client.containers.run(
+                f"{IMAGE_NAME}:{TAG_NAME}",
+                detach=True,
+                tty=True,
+                mem_limit=instance_config.get("memory_size"),
+                cpu_period=100000,
+                cpu_quota=int(100000 * float(instance_config.get("num_cpus"))),
+            )
+        stats_generator = container.stats(decode=True, stream=True)
 
-        launcher = Process(target=launch_run, args=[event, self._container.id, "./bench_1"])
+        launcher = Process(target=launch_run, args=[event, container.id, function_key, value])
         launcher.start()
         res = []
 
@@ -131,5 +146,10 @@ class WorkerInstance:
             res.append(next(stats_generator))
 
         res = [RunStatistics.from_json(collected_stat_json) for collected_stat_json in res]
-        final_stats = CollectedRunStatistics.from_run_stats(res)
+        final_stats = CollectedRunStatistics.from_run_stats(value.value, res)
+        container.stop()
         return final_stats
+
+
+# inst = WorkerInstance()
+# inst.launch("simple_bench", "instance1")

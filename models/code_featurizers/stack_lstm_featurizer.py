@@ -6,7 +6,7 @@ from .document_featurizer import DocumentFeaturizer
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-class EncoderLSTMStack(nn.Module, DocumentFeaturizer):
+class LSTMStackFeaturizer(nn.Module, DocumentFeaturizer):
     def __init__(self, num_embeddings: int, embedding_dim: int, hidden_size: int, out_size: int, nlayers=2):
         super().__init__()
         self.hidden_size = hidden_size

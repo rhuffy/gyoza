@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from .embedding_model import GyozaEmbedding
-from .common import FunctionOnInstance
+from .common import Experience, FunctionOnInstance
 
 # Goal here is (image, node) => predicted perf. score
 
@@ -22,12 +22,8 @@ class GyozaModel:
         super().__init__()
         self._embedding_model = embedding_model
 
-    def fit(
-        self, computation_data: List[FunctionOnInstance], performance_results: List[List[float]]
-    ):
+    def fit(self, experience: List[Experience]):
         # Below code is taken (w/ slight modification) from BAOForPostgreSQL Paper
-
-        performance_results = torch.tensor(performance_results)
 
         optimizer = optim.Adam(self._embedding_model.parameters())
         loss_fn = nn.MSELoss()
@@ -35,7 +31,9 @@ class GyozaModel:
         losses = []
         for epoch in range(100):
             loss_accum = 0
-            for x, y in zip(computation_data, performance_results):
+            for e in experience:
+                y = torch.tensor(e.stats)
+                x = FunctionOnInstance(e.function, e.instance)
                 if CUDA:
                     y = y.cuda()
                 y_pred = self._embedding_model(x)
@@ -46,7 +44,7 @@ class GyozaModel:
                 loss.backward()
                 optimizer.step()
 
-            loss_accum /= len(computation_data)
+            loss_accum /= len(experience)
             losses.append(loss_accum)
             if epoch % 15 == 0:
                 print("Epoch", epoch, "training loss:", loss_accum)

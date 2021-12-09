@@ -103,9 +103,8 @@ class WorkerInstance:
 
     def launch(self, function: Function, instance: Instance) -> List[float]:
         event, value = Event(), Value("f", 0.0)
-        cache_key = f"{function.function_name}-{instance.instance_name}"
 
-        if cache_key not in self._container_cache:
+        if instance.instance_name not in self._container_cache:
             instance_config = yaml.safe_load(instance.instance_body)
             container = self._client.containers.run(
                 f"{self._image}:{self._tag}",
@@ -115,9 +114,9 @@ class WorkerInstance:
                 cpu_period=100000,
                 cpu_quota=int(100000 * float(instance_config.get("num_cpus"))),
             )
-            self._container_cache[cache_key] = container.id
+            self._container_cache[instance.instance_name] = container.id
         else:
-            container = self._client.containers.get(self._container_cache[cache_key])
+            container = self._client.containers.get(self._container_cache[instance.instance_name])
 
         stats_generator = container.stats(decode=True, stream=True)
 

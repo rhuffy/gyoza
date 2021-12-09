@@ -3,7 +3,7 @@ import random
 
 def main():
     j = 0
-    for i in range(40000):
+    for i in range(1, 40000):
         j += random.randint(0, 400000) % i
     print(j)
 

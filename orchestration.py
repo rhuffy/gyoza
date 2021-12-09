@@ -1,18 +1,14 @@
 import argparse
-import collections
-import errno
 import os
 import random
-import sys
 from typing import List, Tuple
-import torch
 
 from models.code_featurizers import (
     LSTMDocumentFeaturizer,
     LSTMNDocumentFeaturizer,
     LSTMStackFeaturizer,
 )
-from models.common import Experience, Function, FunctionOnInstance, Instance, ProgLang
+from models.common import Function, Instance, ProgLang
 from models.embedding_models import LinearEmbedding
 from models.gyoza_embedding import GyozaEmbedding
 from models.instance_featurizers import DefaultInstanceFeaturizer
@@ -40,49 +36,6 @@ def dir_path(path):
         raise argparse.ArgumentTypeError(f"readable_dir:{path} is not a valid path")
 
 
-def is_path_creatable(pathname: str) -> bool:
-    dirname = os.path.dirname(pathname) or os.getcwd()
-    return os.access(dirname, os.W_OK)
-
-
-def is_pathname_valid(pathname: str) -> bool:
-    try:
-        if not isinstance(pathname, str) or not pathname:
-            return False
-
-        _, pathname = os.path.splitdrive(pathname)
-
-        root_dirname = os.environ.get('HOMEDRIVE', 'C:') if sys.platform == 'win32' else os.path.sep
-        assert os.path.isdir(root_dirname)  # ...Murphy and her ironclad Law
-
-        root_dirname = root_dirname.rstrip(os.path.sep) + os.path.sep
-
-        for pathname_part in pathname.split(os.path.sep):
-            try:
-                os.lstat(root_dirname + pathname_part)
-
-            except OSError as exc:
-                if hasattr(exc, 'winerror'):
-                    if exc.winerror == ERROR_INVALID_NAME:
-                        return False
-                elif exc.errno in {errno.ENAMETOOLONG, errno.ERANGE}:
-                    return False
-
-    except TypeError as exc:
-        return False
-    else:
-        return True
-
-
-def is_path_exists_or_creatable(pathname: str) -> bool:
-    try:
-        return is_pathname_valid(pathname) and (
-            os.path.exists(pathname) or is_path_creatable(pathname)
-        )
-    except OSError:
-        return False
-
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--code-model", choices=[LSTM, LSTMN, NEURAL_STACK])
 parser.add_argument("--instance-model", choices=["default"], default="default")
@@ -101,6 +54,8 @@ parser.add_argument("--N", type=int)
 parser.add_argument("--K", type=int)
 parser.add_argument("--max-iters", type=int)
 parser.add_argument("--logging-interval", type=int, default=1)
+parser.add_argument("--docker-image", type=str, default="myimage")
+parser.add_argument("--docker-tag", type=str, default="tag2")
 
 args = parser.parse_args()
 
@@ -211,7 +166,7 @@ def main():
     def affinity(parameters: List[float]) -> float:
         return parameters[0]
 
-    with WorkerInstance() as worker:
+    with WorkerInstance(args.docker_image, args.docker_tag) as worker:
         custom_logger("Beginning training", args.verbose)
         train_gyoza_thompson(
             worker,

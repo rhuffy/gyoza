@@ -3,5 +3,6 @@
 set -x
 
 cd ./c_benchmarks
-gcc -O0 bench_1.c -o bench_1
-gcc -O0 bench_2.c -o bench_2
+mkdir bin
+gcc -O0 bench_1.c -o bin/bench_1
+gcc -O0 bench_2.c -o bin/bench_2

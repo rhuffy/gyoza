@@ -5,7 +5,7 @@ import json
 from utils import file_relative_path
 from .worker import WorkerInstance
 
-with WorkerInstance() as inst:
+with WorkerInstance("myimage", "tag2") as inst:
     header = ["benchmark", "instance_name", "time", "json_data"]
 
     function_types = ["simple_bench", "bench_2"]

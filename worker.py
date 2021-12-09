@@ -1,25 +1,15 @@
-from typing import List, NamedTuple
-import os
+import signal
 import sys
-
-from multiprocessing import Process, Event, Value
+import time
+from collections import defaultdict
+from multiprocessing import Event, Process, Value
 from threading import Thread
+from typing import List, NamedTuple
 
 import docker
-
-from pprint import pprint
-import time
 import yaml
-import signal
 
-from collections import defaultdict
 from models.common import Function, Instance, ProgLang
-
-from utils import file_relative_path
-
-IMAGE_NAME = "myimage"
-TAG_NAME = "tag2"
-
 
 POLLING_CADENCE = 0.01
 
@@ -104,10 +94,12 @@ def launch_run(event, container_id, cmd, value):
 
 class WorkerInstance:
     ## Launches jobs in a subprocess and collects some statistics on them
-    def __init__(self) -> None:
+    def __init__(self, image, tag) -> None:
         self._client = docker.from_env()
 
         self._container_cache = defaultdict(str)
+        self._image = image
+        self._tag = tag
 
     def launch(self, function: Function, instance: Instance) -> List[float]:
         event, value = Event(), Value("f", 0.0)
@@ -116,7 +108,7 @@ class WorkerInstance:
         if cache_key not in self._container_cache:
             instance_config = yaml.safe_load(instance.instance_body)
             container = self._client.containers.run(
-                f"{IMAGE_NAME}:{TAG_NAME}",
+                f"{self._image}:{self._tag}",
                 detach=True,
                 tty=True,
                 mem_limit=instance_config.get("memory_size"),
@@ -130,11 +122,11 @@ class WorkerInstance:
         stats_generator = container.stats(decode=True, stream=True)
 
         if function.function_language == ProgLang.C:
-            cmd = f"./c_benchmarks/{function.function_name}"
+            cmd = f"./c_benchmarks/bin/{function.function_name}"
         elif function.function_language == ProgLang.RS:
-            cmd = f"./rust_benchmarks/{function.function_name}"
+            cmd = f"./rust_benchmarks/bin/{function.function_name}"
         else:
-            cmd = f"python3 ./python_benchmarks/{function.function_name}"
+            cmd = f"python3 ./python_benchmarks/{function.function_name}.py"
 
         launcher = Process(target=launch_run, args=[event, container.id, cmd, value])
         launcher.start()

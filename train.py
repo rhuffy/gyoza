@@ -1,7 +1,7 @@
 import random
 from typing import Callable, Iterator, List
 
-from models.common import Experience, FunctionOnInstance
+from models.common import Experience, Function, FunctionOnInstance, Instance
 from models.model import GyozaModel
 
 from experience_buffer import ExperienceBuffer
@@ -11,8 +11,8 @@ from worker import WorkerInstance
 def train_gyoza_thompson(
     worker: WorkerInstance,
     create_model: Callable[[], GyozaModel],
-    functions: Iterator[str],
-    instances: List[str],
+    functions: Iterator[Function],
+    instances: List[Instance],
     affinity: Callable[[List[float]], float],
     args,
     logger,
@@ -28,9 +28,9 @@ def train_gyoza_thompson(
     for _ in range(next_retrain):
         x = next(functions)
         best_instance = random.choice(instances)
-        logger(f"Running {x} on {best_instance}")
+        logger(f"Running {x.function_name} on {best_instance.instance_name}")
         worker_stats = worker.launch(x, best_instance)
-        experience_buffer.add(Experience(x, best_instance, worker_stats))
+        experience_buffer.add(Experience(FunctionOnInstance(x, best_instance), worker_stats))
 
     model = create_model()
     logger("Fitting model 1")
@@ -49,9 +49,9 @@ def train_gyoza_thompson(
             )
             best_instance = instances[best_instance_idx]
 
-            logger(f"Running {x} on {best_instance}")
+            logger(f"Running {x.function_name} on {best_instance.instance_name}")
             worker_stats = worker.launch(x, best_instance)
-            experience_buffer.add(Experience(x, best_instance, worker_stats))
+            experience_buffer.add(Experience(FunctionOnInstance(x, best_instance), worker_stats))
         model = create_model()
         logger(f"Fitting model {i}")
         model.fit(experience_buffer.get_all(), i, args, logging=logging, epochs=epochs)

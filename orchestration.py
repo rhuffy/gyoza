@@ -4,7 +4,7 @@ import errno
 import os
 import random
 import sys
-from typing import List
+from typing import List, Tuple
 import torch
 
 from models.code_featurizers import (
@@ -12,13 +12,14 @@ from models.code_featurizers import (
     LSTMNDocumentFeaturizer,
     LSTMStackFeaturizer,
 )
-from models.common import Experience, FunctionOnInstance
+from models.common import Experience, Function, FunctionOnInstance, Instance, ProgLang
 from models.embedding_models import LinearEmbedding
 from models.gyoza_embedding import GyozaEmbedding
 from models.instance_featurizers import DefaultInstanceFeaturizer
 from models.model import GyozaModel
 from program_analyzer import ProgramAnalyzer
 from train import train_gyoza_thompson
+from utils import file_relative_path
 from worker import WorkerInstance
 
 LSTM = "lstm"
@@ -127,26 +128,28 @@ def create_model(code_model_args, embedding_model_args, program_analyzer, lang) 
     return GyozaModel(embedding_model)
 
 
-def get_all_functions(rel_path) -> List[str]:
+def get_all_functions_and_data(rel_path) -> Tuple[List[Function], List[str]]:
     function_pointers = []
-    for item in os.listdir(os.path.join(os.path.dirname(__file__), rel_path)):
-        if item.endswith(".c"):
-            function_pointers.append(item[:-2])
-    function_pointers.append("mandelbrot")
+    benchmark_dir_path = file_relative_path(__file__, rel_path)
+    for dir_name in os.listdir(benchmark_dir_path):
+        dir_path = os.path.join(benchmark_dir_path, dir_name)
+        if os.path.isdir(dir_path):
+            for file_name in os.listdir(dir_path):
+                source_code_path = os.path.join(benchmark_dir_path, dir_name, file_name)
+                if dir_name == "c_benchmarks" and file_name.endswith(".c"):
+                    with open(source_code_path, "r") as f:
+                        function_body = f.read()
+                    function_pointers.append(Function(file_name[:-2], ProgLang.C, function_body))
+                elif dir_name == "python_benchmarks" and file_name.endswith(".py"):
+                    with open(source_code_path, "r") as f:
+                        function_body = f.read()
+                    function_pointers.append(Function(file_name[:-3], ProgLang.PY, function_body))
+                elif dir_name == "rust_benchmarks" and os.path.isdir(source_code_path):
+                    source_code_path = os.path.join(source_code_path, "./src/main.rs")
+                    with open(source_code_path, "r") as f:
+                        function_body = f.read()
+                    function_pointers.append(Function(file_name, ProgLang.RS, function_body))
     return function_pointers
-
-
-def get_all_function_data(function_pointers: str) -> List[str]:
-    results = []
-    for function in function_pointers:
-        if function == "mandelbrot":
-            rel_path = f"./benchmarks/mandelbrot/src/main.rs"
-        else:
-            rel_path = f"./benchmarks/{function}.c"
-        with open(os.path.join(os.path.dirname(__file__), rel_path), "r") as f:
-            function_data = f.read()
-        results.append(function_data)
-    return results
 
 
 def random_iter(items):
@@ -183,7 +186,7 @@ class Lang:
 
 def main():
     custom_logger("Loading functions", args.verbose)
-    functions = get_all_functions(args.test_functions)
+    functions = get_all_functions_and_data(args.test_functions)
     custom_logger("Loaded functions, Loading Program Analyzer", args.verbose)
     program_analyzer = ProgramAnalyzer()
     # if os.path.exists(args.stat_cache):
@@ -192,17 +195,18 @@ def main():
 
     custom_logger("Building language...", args.verbose)
     lang = Lang()
-    for function_data in get_all_function_data(functions):
-        lang.add_sentence(function_data)
+    for f in functions:
+        lang.add_sentence(f.function_body)
 
     custom_logger("Creating Model...", args.verbose)
     code_model_args = [lang.n_words, args.embedding_dim, args.hidden_dim, args.out_dim]
 
     custom_logger("Loading instance configs", args.verbose)
-    instances = []
-    for filename in os.listdir(os.path.join(os.path.dirname(__file__), "./instances")):
+    instances, instances_path = [], file_relative_path(__file__, "./instances")
+    for filename in os.listdir(instances_path):
         if filename.endswith(".yml"):
-            instances.append(filename[:-4])
+            with open(os.path.join(instances_path, filename), "r") as f:
+                instances.append(Instance(filename[:-4], f.read()))
 
     def affinity(parameters: List[float]) -> float:
         return parameters[0]

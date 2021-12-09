@@ -13,6 +13,9 @@ import yaml
 import signal
 
 from collections import defaultdict
+from models.common import Function, Instance, ProgLang
+
+from utils import file_relative_path
 
 IMAGE_NAME = "myimage"
 TAG_NAME = "tag2"
@@ -91,10 +94,10 @@ def from_run_stats(timestamp: float, stats: List[RunStatistics]) -> List[float]:
         ]
 
 
-def launch_run(event, container_id, function_key, value):
+def launch_run(event, container_id, cmd, value):
     client = docker.from_env()
     start = time.time()
-    client.containers.get(container_id).exec_run(f"./{function_key}")
+    client.containers.get(container_id).exec_run(cmd)
     value.value = time.time() - start
     event.set()
 
@@ -102,46 +105,38 @@ def launch_run(event, container_id, function_key, value):
 class WorkerInstance:
     ## Launches jobs in a subprocess and collects some statistics on them
     def __init__(self) -> None:
-        # collect names of available benchmarks
-        self._benchmarks = set()
-        for file_name in os.listdir(os.path.join(os.path.dirname(__file__), "./benchmarks")):
-            if file_name.endswith(".c"):
-                self._benchmarks.add(file_name[:-2])
-
-        # manually add mandelbrot
-        self._benchmarks.add("mandelbrot")
-
         self._client = docker.from_env()
 
         self._container_cache = defaultdict(str)
 
-    def launch(self, function_key: str, action_key: str) -> List[float]:
-        if function_key not in self._benchmarks:
-            raise Exception(f"Invalid benchmark {function_key}")
-
+    def launch(self, function: Function, instance: Instance) -> List[float]:
         event, value = Event(), Value("f", 0.0)
-        cache_key = f"{function_key}-{action_key}"
+        cache_key = f"{function.function_name}-{instance.instance_name}"
 
         if cache_key not in self._container_cache:
-            with open(
-                os.path.join(os.path.dirname(__file__), f"./instances/{action_key}.yml"), "r"
-            ) as f:
-                instance_config = yaml.safe_load(f)
-                container = self._client.containers.run(
-                    f"{IMAGE_NAME}:{TAG_NAME}",
-                    detach=True,
-                    tty=True,
-                    mem_limit=instance_config.get("memory_size"),
-                    cpu_period=100000,
-                    cpu_quota=int(100000 * float(instance_config.get("num_cpus"))),
-                )
-                self._container_cache[cache_key] = container.id
+            instance_config = yaml.safe_load(instance.instance_body)
+            container = self._client.containers.run(
+                f"{IMAGE_NAME}:{TAG_NAME}",
+                detach=True,
+                tty=True,
+                mem_limit=instance_config.get("memory_size"),
+                cpu_period=100000,
+                cpu_quota=int(100000 * float(instance_config.get("num_cpus"))),
+            )
+            self._container_cache[cache_key] = container.id
         else:
             container = self._client.containers.get(self._container_cache[cache_key])
 
         stats_generator = container.stats(decode=True, stream=True)
 
-        launcher = Process(target=launch_run, args=[event, container.id, function_key, value])
+        if function.function_language == ProgLang.C:
+            cmd = f"./c_benchmarks/{function.function_name}"
+        elif function.function_language == ProgLang.RS:
+            cmd = f"./rust_benchmarks/{function.function_name}"
+        else:
+            cmd = f"python3 ./python_benchmarks/{function.function_name}"
+
+        launcher = Process(target=launch_run, args=[event, container.id, cmd, value])
         launcher.start()
         res = []
 

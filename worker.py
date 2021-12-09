@@ -184,7 +184,3 @@ class WorkerInstance:
         final_stats = from_run_stats(value.value, res)
         container.stop()
         return final_stats
-
-
-# inst = WorkerInstance()
-# inst.launch("simple_bench", "instance1")

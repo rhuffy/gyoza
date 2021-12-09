@@ -10,6 +10,7 @@ from pprint import pprint
 import time
 import yaml
 
+from collections import defaultdict
 
 IMAGE_NAME = "myimage"
 TAG_NAME = "tag2"
@@ -54,50 +55,6 @@ class RunStatistics(NamedTuple):
             network_rx=rx,
             network_tx=tx,
         )
-
-
-# class CollectedRunStatistics(NamedTuple):
-#     time_elapsed: float
-#     max_cpu_utilization: float
-#     average_cpu_utilization: float
-#     max_memory_utilization: float
-#     average_memory_utilization: float
-#     max_network_rx: float
-#     average_network_rx: float
-#     max_network_tx: float
-#     average_network_tx: float
-
-#     @staticmethod
-#     def from_run_stats(timestamp: float, stats: List[RunStatistics]):
-#         max_cpu, sum_cpu = 0.0, 0.0
-#         max_mem, sum_mem = 0.0, 0.0
-#         max_rx, sum_rx = 0.0, 0.0
-#         max_tx, sum_tx = 0.0, 0.0
-
-#         for stat in stats:
-#             sum_cpu += stat.cpu_utilization
-#             max_cpu = max(max_cpu, stat.cpu_utilization)
-
-#             sum_mem += stat.memory_utilization
-#             max_mem = max(max_mem, stat.memory_utilization)
-
-#             sum_rx += stat.network_rx
-#             max_rx = max(max_rx, stat.network_rx)
-
-#             sum_tx += stat.network_tx
-#             max_tx = max(max_tx, stat.network_tx)
-
-#             return [
-#                 timestamp,
-#                 max_cpu,
-#                 sum_cpu / len(stats),
-#                 max_mem,
-#                 sum_mem / len(stats),
-#                 max_rx,
-#                 sum_rx / len(stats),
-#                 max_tx,
-#                 sum_tx / len(stats),
-#             ]
 
 
 def from_run_stats(timestamp: float, stats: List[RunStatistics]) -> List[float]:
@@ -154,23 +111,32 @@ class WorkerInstance:
 
         self._client = docker.from_env()
 
+        self._container_cache = defaultdict(str)
+
     def launch(self, function_key: str, action_key: str) -> List[float]:
         if function_key not in self._benchmarks:
             raise Exception(f"Invalid benchmark {function_key}")
 
         event, value = Event(), Value("f", 0.0)
-        with open(
-            os.path.join(os.path.dirname(__file__), f"./instances/{action_key}.yml"), "r"
-        ) as f:
-            instance_config = yaml.safe_load(f)
-            container = self._client.containers.run(
-                f"{IMAGE_NAME}:{TAG_NAME}",
-                detach=True,
-                tty=True,
-                mem_limit=instance_config.get("memory_size"),
-                cpu_period=100000,
-                cpu_quota=int(100000 * float(instance_config.get("num_cpus"))),
-            )
+        cache_key = f"{function_key}-{action_key}"
+
+        if cache_key not in self._container_cache:
+            with open(
+                os.path.join(os.path.dirname(__file__), f"./instances/{action_key}.yml"), "r"
+            ) as f:
+                instance_config = yaml.safe_load(f)
+                container = self._client.containers.run(
+                    f"{IMAGE_NAME}:{TAG_NAME}",
+                    detach=True,
+                    tty=True,
+                    mem_limit=instance_config.get("memory_size"),
+                    cpu_period=100000,
+                    cpu_quota=int(100000 * float(instance_config.get("num_cpus"))),
+                )
+                self._container_cache[cache_key] = container.id
+        else:
+            container = self._client.containers.get(self._container_cache[cache_key])
+
         stats_generator = container.stats(decode=True, stream=True)
 
         launcher = Process(target=launch_run, args=[event, container.id, function_key, value])
@@ -182,5 +148,4 @@ class WorkerInstance:
 
         res = [RunStatistics.from_json(collected_stat_json) for collected_stat_json in res]
         final_stats = from_run_stats(value.value, res)
-        container.stop()
         return final_stats

@@ -206,20 +206,20 @@ def main():
     def affinity(parameters: List[float]) -> float:
         return parameters[0]
 
-    worker = WorkerInstance()
-    custom_logger("Beginning training", args.verbose)
-    train_gyoza_thompson(
-        worker,
-        lambda: create_model(code_model_args, embedding_model_args, program_analyzer, lang),
-        random_iter(functions),
-        instances,
-        affinity,
-        args,
-        lambda x: custom_logger(x, args.verbose),
-        logging=args.logging,
-    )
-    # Save stat cache to disk
-    program_analyzer.save(args.stat_cache)
+    with WorkerInstance() as worker:
+        custom_logger("Beginning training", args.verbose)
+        train_gyoza_thompson(
+            worker,
+            lambda: create_model(code_model_args, embedding_model_args, program_analyzer, lang),
+            random_iter(functions),
+            instances,
+            affinity,
+            args,
+            lambda x: custom_logger(x, args.verbose),
+            logging=args.logging,
+        )
+        # Save stat cache to disk
+        program_analyzer.save(args.stat_cache)
 
 
 if __name__ == "__main__":

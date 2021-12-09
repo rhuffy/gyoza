@@ -149,3 +149,11 @@ class WorkerInstance:
         res = [RunStatistics.from_json(collected_stat_json) for collected_stat_json in res]
         final_stats = from_run_stats(value.value, res)
         return final_stats
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        for container_id in self._container_cache.values():
+            self._client.containers.stop(container_id)
+            self._client.containers.remove(container_id)

@@ -1,6 +1,7 @@
 import argparse
 import os
 import random
+import yaml
 from typing import List, Tuple
 
 from models.code_featurizers import (
@@ -24,7 +25,7 @@ NEURAL_STACK = "neural_stack"
 
 INSTANCE_FEATURES = 4
 PROGRAM_ANALYZER_FEATURES = 10
-RUNTIME_STATISTICS = 9
+RUNTIME_STATISTICS = 10
 
 ERROR_INVALID_NAME = 123
 
@@ -45,6 +46,7 @@ parser.add_argument("--experience-length", type=int)
 parser.add_argument("--embedding-dim", type=int, default=128)
 parser.add_argument("--hidden-dim", type=int, default=512)
 parser.add_argument("--out-dim", type=int, default=32)
+parser.add_argument("--embedding-hidden", type=int, default=10)
 parser.add_argument("--model-path", type=str)
 parser.add_argument("--stat-cache", type=str)
 parser.add_argument("--logging", type=bool, default=False)
@@ -61,7 +63,7 @@ args = parser.parse_args()
 
 embedding_model_args = [
     args.out_dim + INSTANCE_FEATURES + PROGRAM_ANALYZER_FEATURES,
-    RUNTIME_STATISTICS,
+    args.embedding_hidden,
 ]
 
 
@@ -163,8 +165,9 @@ def main():
             with open(os.path.join(instances_path, filename), "r") as f:
                 instances.append(Instance(filename[:-4], f.read()))
 
-    def affinity(parameters: List[float]) -> float:
-        return parameters[0]
+    def affinity(instance: Instance, parameters: List[float]) -> float:
+        cost = float(yaml.safe_load(instance.instance_body).get("cost"))
+        return -parameters[1] - 0.1 * cost if parameters[0] < 1.0 else float('-inf')
 
     with WorkerInstance(args.docker_image, args.docker_tag) as worker:
         custom_logger("Beginning training", args.verbose)

@@ -17,7 +17,7 @@ class DefaultInstanceFeaturizer(InstanceFeaturizer):
         super().__init__()
 
     def _mem_size_to_float(self, memory_str: str) -> float:
-        prefix, suffix = float(memory_str[0]), memory_str[1]
+        prefix, suffix = float(memory_str[:-1]), memory_str[-1]
         if suffix == "m":
             return prefix * 1.0e6
         elif suffix == "g":

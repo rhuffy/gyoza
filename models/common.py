@@ -31,4 +31,4 @@ class FunctionOnInstance:
 @dataclass
 class Experience:
     function_on_instance: FunctionOnInstance
-    stats: List[float]
+    affinity_score: float

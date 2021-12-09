@@ -1,7 +1,8 @@
+from enum import Enum
 import signal
 import sys
 import time
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from multiprocessing import Event, Process, Value
 from threading import Thread
 from typing import List, NamedTuple
@@ -12,6 +13,8 @@ import yaml
 from models.common import Function, Instance, ProgLang
 
 POLLING_CADENCE = 0.01
+
+RunResult = namedtuple("NamedTuple", ["exit_code", "execution_time"])
 
 
 class RunStatistics(NamedTuple):
@@ -52,7 +55,9 @@ class RunStatistics(NamedTuple):
         )
 
 
-def from_run_stats(timestamp: float, stats: List[RunStatistics]) -> List[float]:
+def from_run_stats(
+    exit_code: int, execution_time: float, stats: List[RunStatistics]
+) -> List[float]:
     max_cpu, sum_cpu = 0.0, 0.0
     max_mem, sum_mem = 0.0, 0.0
     max_rx, sum_rx = 0.0, 0.0
@@ -72,7 +77,8 @@ def from_run_stats(timestamp: float, stats: List[RunStatistics]) -> List[float]:
         max_tx = max(max_tx, stat.network_tx)
 
         return [
-            timestamp,
+            0.0 if exit_code == 0 else 1.0,
+            execution_time,
             max_cpu,
             sum_cpu / len(stats),
             max_mem,
@@ -84,11 +90,12 @@ def from_run_stats(timestamp: float, stats: List[RunStatistics]) -> List[float]:
         ]
 
 
-def launch_run(event, container_id, cmd, value):
+def launch_run(event, container_id, cmd, run_result):
     client = docker.from_env()
     start = time.time()
-    client.containers.get(container_id).exec_run(cmd)
-    value.value = time.time() - start
+    exit_code, _ = client.containers.get(container_id).exec_run(cmd)
+    run_result.exit_code.value = exit_code
+    run_result.execution_time.value = time.time() - start
     event.set()
 
 
@@ -102,7 +109,8 @@ class WorkerInstance:
         self._tag = tag
 
     def launch(self, function: Function, instance: Instance) -> List[float]:
-        event, value = Event(), Value("f", 0.0)
+        event = Event()
+        run_result = RunResult(Value("d", 0), Value("f", 0.0))
 
         if instance.instance_name not in self._container_cache:
             instance_config = yaml.safe_load(instance.instance_body)
@@ -127,7 +135,7 @@ class WorkerInstance:
         else:
             cmd = f"python3 ./python_benchmarks/{function.function_name}.py"
 
-        launcher = Process(target=launch_run, args=[event, container.id, cmd, value])
+        launcher = Process(target=launch_run, args=[event, container.id, cmd, run_result])
         launcher.start()
         res = []
 
@@ -135,7 +143,9 @@ class WorkerInstance:
             res.append(next(stats_generator))
 
         res = [RunStatistics.from_json(collected_stat_json) for collected_stat_json in res]
-        final_stats = from_run_stats(value.value, res)
+        final_stats = from_run_stats(
+            run_result.exit_code.value, run_result.execution_time.value, res
+        )
         return final_stats
 
     def _handle_interrupt(self, signal_received, frame):

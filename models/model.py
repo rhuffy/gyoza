@@ -53,7 +53,7 @@ class GyozaModel:
         for epoch in range(epochs):
             loss_accum = 0
             for i, e in enumerate(experience):
-                y = torch.tensor(e.stats)
+                y = torch.tensor([e.affinity_score])
                 x = e.function_on_instance
                 if CUDA:
                     y = y.cuda()

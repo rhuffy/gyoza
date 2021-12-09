@@ -1,4 +1,4 @@
 num_cpus: 4
-memory_size: 2g
+memory_size: 100m
 network_ops: 3000
 cost: 250

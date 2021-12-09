@@ -3,6 +3,7 @@ import os
 import sys
 
 from multiprocessing import Process, Event, Value
+from threading import Thread
 
 import docker
 
@@ -151,7 +152,7 @@ class WorkerInstance:
         final_stats = from_run_stats(value.value, res)
         return final_stats
 
-    def _handle_interrupt(self):
+    def _handle_interrupt(self, signal_received, frame):
         sys.exit()
 
     def __enter__(self):
@@ -160,6 +161,16 @@ class WorkerInstance:
         return self
 
     def __exit__(self, *args):
+        def close_container(containers, container_id):
+            container = containers.get(container_id)
+            container.stop()
+            container.remove()
+
+        threads = []
         for container_id in self._container_cache.values():
-            self._client.containers.stop(container_id)
-            self._client.containers.remove(container_id)
+            thread = Thread(target=close_container, args=(self._client.containers, container_id))
+            thread.start()
+            threads.append(thread)
+
+        for thread in threads:
+            thread.join()

@@ -99,6 +99,7 @@ parser.add_argument("--epochs", type=int, default=200)
 parser.add_argument("--N", type=int)
 parser.add_argument("--K", type=int)
 parser.add_argument("--max-iters", type=int)
+parser.add_argument("--logging-interval", type=int, default=1)
 
 args = parser.parse_args()
 

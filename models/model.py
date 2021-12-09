@@ -52,7 +52,7 @@ class GyozaModel:
         losses = []
         for epoch in range(epochs):
             loss_accum = 0
-            for e in experience:
+            for i, e in enumerate(experience):
                 y = torch.tensor(e.stats)
                 x = FunctionOnInstance(e.function, e.instance)
                 if CUDA:
@@ -67,7 +67,7 @@ class GyozaModel:
                 loss.backward()
                 optimizer.step()
 
-                if logging:
+                if logging and i % args.loss_interval == 0:
                     wandb.log({"loss": loss})
 
             loss_accum /= len(experience)

@@ -1,0 +1,3 @@
+[submodule "models/ConcreteDropout"]
+	path = models/ConcreteDropout
+	url = git@github.com:danielkelshaw/ConcreteDropout.git

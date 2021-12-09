@@ -32,7 +32,7 @@ class GyozaModel:
         learning_rate=1e-3,
         epochs=100,
         logging=False,
-    ):
+    ) -> float:
         # Below code is taken (w/ slight modification) from BAOForPostgreSQL Paper
 
         run = None
@@ -44,7 +44,6 @@ class GyozaModel:
                 "samples_taken": samples_taken,
                 "args": args,
             }
-
             wandb.watch(self._embedding_model)
 
         optimizer = optim.Adam(self._embedding_model.parameters())

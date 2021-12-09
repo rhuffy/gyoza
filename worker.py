@@ -149,20 +149,12 @@ class WorkerInstance:
             if file_name.endswith(".c"):
                 self._benchmarks.add(file_name[:-2])
 
+        # manually add mandelbrot
+        self._benchmarks.add("mandelbrot")
+
         self._client = docker.from_env()
 
     def launch(self, function_key: str, action_key: str) -> List[float]:
-        return [
-            1.0,
-            2.0,
-            0.5,
-            2.0,
-            0.1,
-            0.0,
-            0.5,
-            4.0,
-            0.4,
-        ]
         if function_key not in self._benchmarks:
             raise Exception(f"Invalid benchmark {function_key}")
 

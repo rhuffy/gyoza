@@ -5,6 +5,7 @@ import os
 import random
 import sys
 from typing import List
+import torch
 
 from models.code_featurizers import (
     LSTMDocumentFeaturizer,
@@ -17,6 +18,7 @@ from models.gyoza_embedding import GyozaEmbedding
 from models.instance_featurizers import DefaultInstanceFeaturizer
 from models.model import GyozaModel
 from program_analyzer import ProgramAnalyzer
+from train import train_gyoza_thompson
 from worker import WorkerInstance
 
 LSTM = "lstm"
@@ -85,7 +87,6 @@ parser.add_argument("--code-model", choices=[LSTM, LSTMN, NEURAL_STACK])
 parser.add_argument("--instance-model", choices=["default"], default="default")
 parser.add_argument("--test-functions", type=dir_path)
 parser.add_argument("--experience-length", type=int)
-parser.add_argument("--num-embeddings", type=int, default=100)
 parser.add_argument("--embedding-dim", type=int, default=128)
 parser.add_argument("--hidden-dim", type=int, default=512)
 parser.add_argument("--out-dim", type=int, default=32)
@@ -93,11 +94,10 @@ parser.add_argument("--model-path", type=str)
 parser.add_argument("--stat-cache", type=str)
 parser.add_argument("--logging", type=bool, default=False)
 parser.add_argument("--verbose", type=bool, default=True)
-parser.add_argument("--epochs", type=int, default=100)
+parser.add_argument("--epochs", type=int, default=200)
 
 args = parser.parse_args()
 
-code_model_args = [args.num_embeddings, args.embedding_dim, args.hidden_dim, args.out_dim]
 embedding_model_args = [
     args.out_dim + INSTANCE_FEATURES + PROGRAM_ANALYZER_FEATURES,
     RUNTIME_STATISTICS,
@@ -127,7 +127,21 @@ def get_all_functions(rel_path) -> List[str]:
     for item in os.listdir(os.path.join(os.path.dirname(__file__), rel_path)):
         if item.endswith(".c"):
             function_pointers.append(item[:-2])
+    function_pointers.append("mandelbrot")
     return function_pointers
+
+
+def get_all_function_data(function_pointers: str) -> List[str]:
+    results = []
+    for function in function_pointers:
+        if function == "mandelbrot":
+            rel_path = f"./benchmarks/mandelbrot/src/main.rs"
+        else:
+            rel_path = f"./benchmarks/{function}.c"
+        with open(os.path.join(os.path.dirname(__file__), rel_path), "r") as f:
+            function_data = f.read()
+        results.append(function_data)
+    return results
 
 
 def random_iter(items):
@@ -171,11 +185,13 @@ def main():
     #     program_analyzer.load(args.stat_cache)
     custom_logger("Loaded Program Analyzer", args.verbose)
 
-    custom_logger("Creating Model...", args.verbose)
+    custom_logger("Building language...", args.verbose)
     lang = Lang()
-    model = create_model(code_model_args, embedding_model_args, program_analyzer, lang)
-    custom_logger("Creating worker instance...", args.verbose)
-    worker = WorkerInstance()
+    for function_data in get_all_function_data(functions):
+        lang.add_sentence(function_data)
+
+    custom_logger("Creating Model...", args.verbose)
+    code_model_args = [lang.n_words, args.embedding_dim, args.hidden_dim, args.out_dim]
 
     custom_logger("Loading instance configs", args.verbose)
     instances = []
@@ -183,51 +199,23 @@ def main():
         if filename.endswith(".yml"):
             instances.append(filename[:-4])
 
-    custom_logger("initialize experience buffer", args.verbose)
-    experience_buffer = collections.deque(maxlen=args.experience_length)
-
-    # user definable
     def affinity(parameters: List[float]) -> float:
         return parameters[0]
 
-    # not sure
-    def stopping_condition(iters: int) -> bool:
-        return iters == 50
-
-    iter_count = 0
-    custom_logger("Starting training...", args.verbose)
-    for function in random_iter(functions):
-        custom_logger(f"Training on function {function}", args.verbose)
-        custom_logger("Predicting actions...", args.verbose)
-        best_instance_idx, _ = max(
-            [
-                (i, model.predict(FunctionOnInstance(function, instance)))
-                for i, instance in enumerate(instances)
-            ],
-            key=lambda x: affinity(x[1]),
-        )
-        best_instance = instances[best_instance_idx]
-        custom_logger(f"Chose action {best_instance} for context {function}", args.verbose)
-        custom_logger("Launching Run", args.verbose)
-        res = worker.launch(function, best_instance)
-        custom_logger("Launched Run", args.verbose)
-        experience_buffer.append(Experience(function, best_instance, res))
-        iter_count += 1
-        custom_logger(f"Iter {iter_count}", args.verbose)
-        if iter_count % args.experience_length == 0:
-            # Thompson Sampling
-            custom_logger("Retraining model according to Thompson sampling...", args.verbose)
-            model = create_model(code_model_args, embedding_model_args, program_analyzer, lang)
-            model.fit(
-                random.choices(experience_buffer, k=args.experience_length),
-                iter_count,
-                args,
-                epochs=args.epochs,
-                logging=args.logging,
-            )
-        if stopping_condition(iter_count):
-            break
-
+    worker = WorkerInstance()
+    train_gyoza_thompson(
+        worker,
+        lambda: create_model(code_model_args, embedding_model_args, program_analyzer, lang),
+        random_iter(functions),
+        instances,
+        affinity,
+        args.N,
+        args.K,
+        args.max_iters,
+        args,
+        lambda x: custom_logger(x, args.verbose),
+        logging=True,
+    )
     # Save stat cache to disk
     program_analyzer.save(args.stat_cache)
 

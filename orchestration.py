@@ -95,6 +95,9 @@ parser.add_argument("--stat-cache", type=str)
 parser.add_argument("--logging", type=bool, default=False)
 parser.add_argument("--verbose", type=bool, default=True)
 parser.add_argument("--epochs", type=int, default=200)
+parser.add_argument("--N", type=int)
+parser.add_argument("--K", type=int)
+parser.add_argument("--max-iters", type=int)
 
 args = parser.parse_args()
 
@@ -203,18 +206,16 @@ def main():
         return parameters[0]
 
     worker = WorkerInstance()
+    custom_logger("Beginning training", args.verbose)
     train_gyoza_thompson(
         worker,
         lambda: create_model(code_model_args, embedding_model_args, program_analyzer, lang),
         random_iter(functions),
         instances,
         affinity,
-        args.N,
-        args.K,
-        args.max_iters,
         args,
         lambda x: custom_logger(x, args.verbose),
-        logging=True,
+        logging=args.logging,
     )
     # Save stat cache to disk
     program_analyzer.save(args.stat_cache)

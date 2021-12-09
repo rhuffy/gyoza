@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 from .embedding_model import EmbeddingModel
-from ConcreteDropout.condrop import ConcreteDropout
+from ..ConcreteDropout.condrop import ConcreteDropout
 
 
 class LinearEmbedding(nn.Module, EmbeddingModel):

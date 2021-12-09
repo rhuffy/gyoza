@@ -1,6 +1,6 @@
 from typing import List, NamedTuple
 import os
-import subprocess
+import sys
 
 from multiprocessing import Process, Event, Value
 
@@ -9,6 +9,7 @@ import docker
 from pprint import pprint
 import time
 import yaml
+import signal
 
 from collections import defaultdict
 
@@ -150,7 +151,12 @@ class WorkerInstance:
         final_stats = from_run_stats(value.value, res)
         return final_stats
 
+    def _handle_interrupt(self):
+        sys.exit()
+
     def __enter__(self):
+        signal.signal(signal.SIGINT, self._handle_interrupt)
+        signal.signal(signal.SIGTERM, self._handle_interrupt)
         return self
 
     def __exit__(self, *args):

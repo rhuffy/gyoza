@@ -167,7 +167,7 @@ def main():
 
     def affinity(instance: Instance, parameters: List[float]) -> float:
         cost = float(yaml.safe_load(instance.instance_body).get("cost"))
-        return -parameters[1] - 0.1 * cost if parameters[0] < 1.0 else float('-inf')
+        return -parameters[1] - 0.01 * cost
 
     with WorkerInstance(args.docker_image, args.docker_tag) as worker:
         custom_logger("Beginning training", args.verbose)
